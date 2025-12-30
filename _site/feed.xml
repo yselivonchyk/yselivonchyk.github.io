@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.10.0">Jekyll</generator><link href="http://localhost:4000/feed.xml" rel="self" type="application/atom+xml" /><link href="http://localhost:4000/" rel="alternate" type="text/html" /><updated>2025-12-30T00:51:23-05:00</updated><id>http://localhost:4000/feed.xml</id><title type="html">Yauheni Selivonchyk</title><subtitle>Deep Learning engineer</subtitle><entry><title type="html">Rope</title><link href="http://localhost:4000/RoPE/" rel="alternate" type="text/html" title="Rope" /><published>2025-12-24T00:00:00-05:00</published><updated>2025-12-24T00:00:00-05:00</updated><id>http://localhost:4000/RoPE</id><content type="html" xml:base="http://localhost:4000/RoPE/"><![CDATA[<p>Internalizing RoPE embeddings. If you like me slept under the rock since the introduction of RoPE in 2021 this document provide the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!</p>
+
+<h2 id="minimal-background-and-notations">Minimal background and notations</h2>
+
+<p>Self-attention sublayer of the transformer block derives Query Key Value from each token in the sequence. Query of the target token would be compared to Key of preceeding words to determine in which proportion Values of the previous tokens to be blended together using softmax function:</p>
+
+\[\text{softmax}_{n}\left(\frac{q^T_i k_n}{\sqrt{|D|}}\right), \text{where }i\in[0, n]\]
+
+<p>Positional embedding is the main way to help network distinguish between words at different position. Softmax by itself does not distinguish tokens that close from those that are far. We used to provide position as an integer (lacking suitable representation in NN) or convert position index to a one-hot embedding, which wasted computational resources and was non-compositional.</p>
+
+<h2 id="rope-formula-transformation-computational-advantage">RoPE: formula, transformation, computational advantage.</h2>
+
+<p>RoPE takes a 8192-dimensional embedding, partitions it into 4096 2D subspaces (2D pairs). Each subspace is assigned a rotation speed according to an exponential formula. When attention is calculated embedding of the Key is rotated by the rotation speed multiplied by the distance from the Query token.</p>
+
+<p>Formula for rotation momentum depending on the subspace index $i\in[0, D/2]$:</p>
+
+\[\theta_i(p) = p \cdot Q^{- \frac{2i}{d}}\]
+
+<p>Let’s unpack it. If we start from embedding size  $d=8192$ embedding subspace $i \in [{0, \dots, \tfrac{d}{2}-1}]$ (so, $[0, 4095]$). 
+Token positions $p$ for a 6-token sequence when caclulating attention for the 5th token would be $[3, 2, 1, 0, -, -]$. Base $Q$ is an arbitrary number and the original authors set it to $10000$.</p>
+
+<blockquote>
+  <p>Example: elements $[8,9]$ (out of 8192) for token at position 15 would be rotated by $15 \cdot 10000^{-\frac{8}{8192}} = 15 \cdot 1.009 = 15.135$ radians. Which is about $867^{\circ}$ ($57.3^{\circ}$ per radian) and since we can ignore full rotation it is equivalent to $867\mod 360 = 147^{\circ}$.</p>
+</blockquote>
+
+<p>The rotary embedding applied to the corresponding 2D subspace is:</p>
+
+\[\mathrm{RoPE}_i(p)
+=
+\begin{pmatrix}
+\cos \theta_i(p) &amp; -\sin \theta_i(p) \\
+\sin \theta_i(p) &amp; \cos \theta_i(p)
+\end{pmatrix}\]
+
+<p>And the complete transformation matrix looks like this:</p>
+
+<p><img src="/images/rope_transform.png" alt="RoPE Transformation Matrix" /></p>
+
+<p>Su, Jianlin; Lu, Yu; Pan, Shengfeng; Wen, Bo; Liu, Yunfeng (2021)
+“RoFormer: Enhanced Transformer with Rotary Position Embedding”
+arXiv:2104.09864</p>
+
+<p>RoPE authors make the following arbitrary choices setting up RoPE embedding:</p>
+<ul>
+  <li>maximum rotation angle of 1 rad</li>
+  <li>minimum rotation angle of $1/10000*rad$</li>
+  <li>linearly exponential transition between minimum and maximum angle</li>
+  <li>distance between tokens $(t_i,t_j)$ is measured as difference between indexes $i \text{ and } j$ $int(i-j)$</li>
+</ul>
+
+<p>Recap:</p>
+<ul>
+  <li>RoPE transforms embeddings without adding new dimensions or trainable parameters</li>
+  <li>Rope partitions embedding space into 2D subspaces. In each subspace it rotates vectors by a unique angle. Angle is multiplied by integer distance.</li>
+  <li>RoPE preserves embedding norm (true for every subspace)</li>
+  <li>Original formulation allows for an efficient implementation where Q for each token is projected exactly once.</li>
+</ul>
+
+<h3 id="notation">Notation</h3>
+
+<ul>
+  <li>$D$ — size of the embedding space</li>
+  <li>$i$ — rotary dimension index (each $i$ corresponds to one 2D plane)</li>
+  <li>$p$ — token position index (0-based or 1-based; consistent choice assumed)</li>
+  <li>$L_{\mathrm{train}}$ — maximum context length seen during training</li>
+  <li>$L_{\mathrm{target}}$ — desired inference-time context length</li>
+  <li>$Q$ — RoPE base (commonly $10{,}000$)</li>
+  <li>$\alpha$ — NTK scaling factor<br />
+(often $\alpha = \tfrac{L_{\mathrm{target}}}{L_{\mathrm{train}}}$)</li>
+  <li>$\theta_i(p)$ — rotation angle for dimension $i$ at position $p$</li>
+  <li>$\mathrm{RoPE}_i(p)$ — $2 \times 2$ rotation matrix applied to query/key components</li>
+</ul>
+
+<h2 id="rope-visualization">RoPE visualization</h2>
+
+<p>Let’s dwell a little on this transformation.</p>
+
+<p>In practice here is how angle would change depending on the embedding component position $i$. I find degrees to be more intuitive than radians. I print values of $\theta$ as a bar chart and sort them by index $i$ since so far $i$ is in fact discrete.</p>
+
+<p><img src="/images/rope_theta_dims.png" alt="$\theta$ visualization for 8192-dim embedding." /></p>
+
+<blockquote>
+  <p><code class="language-plaintext highlighter-rouge">Observation: we rotate lower 100s of dims by 50-60 degrees while higher (&gt;2000) dimensions rotations is hardly noticeable at low distances. Changing embedding size 2048 to 16386 the shape of the curve would remain the same, it would simply stretch over more indexes i.</code></p>
+</blockquote>
+
+<p>Here is another variation of the same graph. This time lets take a look at the distance required to get a full rotation depending on the subdimension index $i$:</p>
+
+<p><img src="/images/rope_fullrotation_count.png" alt="Distance required to make a full rotation." /></p>
+
+<p>Finally, how does the rotation actually looks like? On the following graph we visualize pairs of $x_i, y_i$ as a vector. We start from a original vector $[1,1]$ and show how it changes for small distances of 0 to 7 for $i=[0, 60, 500, 2000, 3250]$:</p>
+
+<p><img src="/images/rope_theta_5locations.png" alt="Theta log values" /></p>
+
+<blockquote>
+  <p><code class="language-plaintext highlighter-rouge">We can see that in high-i rotation is barely noticeable for small distance (p).</code></p>
+</blockquote>
+
+<h2 id="staticntk">StaticNTK</h2>
+
+<p>First major known improvement (according to me) over the original RoPE was this post of reddit: <a href="https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/">NTK-Aware Scaled RoPE allows LLaMA models to have extended (8k+) context size…</a> that people now generally refer to as $StaticNTK$. The work was inspired by NTK but knowing what NTK is redundant to understanding the proposed modified transformation:</p>
+
+\[\theta_i^{\mathrm{NTK}}(p)
+=
+p \cdot Q^{- \frac{2i}{d}} \cdot \boldsymbol{\alpha^{- \frac{2i}{d-2}}}\]
+
+<p>Static NTK introduces scaling parameter $\alpha$ with suggested values of $[2, 4, 8]$ (these are about as good). $\alpha$ has little affect on small i-indexes but high $i$-indexes would have angle $\theta$ reduced by $\alpha$.</p>
+
+<p><img src="/images/rope_theta_dims_sntk.png" alt="$\theta$ visualization for 8192-dim embedding." /></p>
+
+<p><img src="/images/rope_fullrotation_count_sntk.png" alt="Distance required to make a full rotation." /></p>
+
+<p>$\alpha=1$ is equivalent to the old rope. Unfortunately, I had to abandon bar charts in favor of lines that may give a false sense of continuity of the function.</p>
+
+<p>Interestingly enough, standard RoPE can be replaced with StaticNTK in inference. When given a few-shot finetuning performance degradation is negligiable.</p>
+
+<p>Another intersting fact is that StaticNTK is better than simply increasing Q by the same factor. To spell it out: changing $Q:10000-&gt;80000$ would yield the same smallest rotation $\theta_{4096}$ as StaticNTK with $\alpha=8$ but the curve would be different and this difference is important.</p>
+
+<h2 id="dynamic-ntk">Dynamic NTK</h2>
+
+<p>Despite the name it is not related to Static NTK (or, again, NTK in general). So, let’s just take a look a new heuristic and move on.</p>
+
+<p>Dynamic NTK defines a rescaled position $\tilde{p}$:</p>
+
+\[\tilde{p} =
+\begin{cases}
+p, &amp; p \le L_{\mathrm{train}} \\
+p \cdot \dfrac{L_{\mathrm{train}}}{L_{\mathrm{target}}}, &amp; p &gt; L_{\mathrm{train}}
+\end{cases}\]
+
+<p>Then applies standard RoPE using the rescaled position:</p>
+
+\[\theta_i^{\mathrm{dyn}}(p) = \tilde{p} \cdot Q^{- \frac{2i}{d}}\]
+
+<p>Interpretation: the graphs would look the same as stock RoPE, but we would rescale the distance to appear similar to the one seen in training. Example: if we trained on sequencies of maximum size 4000 and we throw a sequence of size 12000 during inference we would scale the distances greater than 4000 by $3=4000/12000$.</p>
+
+<p>To me it appears that transformations-wise words in positions $4000….12000$ would have distances overlaping with $1333…4000$ but authors state that this is better than using distances not seen in training.</p>
+
+<h2 id="yarn-yet-another-rope-extension">YaRN (Yet another RoPE extensioN)</h2>
+
+<p>YaRN (<a href="https://arxiv.org/pdf/2309.00071">arxiv.org/2309</a>) heuristicizes RoPE even further. It updates attention softmax formula and applies scaling (if you squint, in may look a lot like DynamicNTK) but only to higher dimensions of embedding space (higher $i$). The paper is very information dense and we would unpack new projection in two steps not without some criminal oversimplifications.</p>
+
+<p>First, <strong>attention formula</strong> update. Authors suggest replacing</p>
+
+\[\text{softmax}\left(\frac{q^T_m k_n}{\sqrt{|D|}}\right) \to \text{softmax}_{\text{yarn}}\left(\frac{q^T_m k_n}{t \sqrt{|D|}}\right)\]
+
+<p>Where the formula for temperature $t$ is a) defined as function per model and b) value $t$ is calculated per-target. For LLAMA/LLAMA2 it is said to be best selected depending on the new context length $L’$ as below. Quick synthetic experiment (not shown) suggests that as the sequence length growth this choice of curve $t$ tends to reduce the maximum attention score more agressively.</p>
+
+\[t = (0.1 \ln(\frac{L_{\text{target}}}{L_{\text{train}}}) + 1)^2\]
+
+<p><img src="/images/rope_yarn_t.png" alt="LLAMA/LLAMA2 t values depending on sequence length." /></p>
+
+<p>Now, to the <strong>angle rotation</strong> formula. YaRN takes indexes $i$ of the embedding dimensions (again $i\in [0, 4095]$ for embeddings size 8192) and splits them into 3 blocks: the low-$i$ (high frequency) ones are not scaled at all, middle portion is a linear transition from 100% non-scaled to 100% scaled, and the 100% scaled portion comes at the end.</p>
+
+<p>The formula goes as following:</p>
+
+\[\gamma_i^* =
+\begin{cases}
+0, &amp; \text{if } i/D &lt; d_\alpha \\[1mm]
+\dfrac{i/D - d_\alpha}{d_\beta - d_\alpha}, &amp; \text{if } d_\alpha &lt; i/D &lt; d_\beta\\[1mm]
+1, &amp; \text{if } i/D &gt; d_\beta 
+\end{cases}\]
+
+\[\theta_i^{YaRN} = (1 - \gamma_i^*) \theta_i + \gamma_i^* \frac{\theta_i}{s}\]
+
+<p>$d_\alpha$ and $d_\beta \in [0, 1]$ ($d_\alpha &lt; d_\beta$) are 2 more hyperparameters for one to select. In the original paper authors actually pick parameters $\alpha$ and $\beta$ in a different subspace based on an exponential transformation $r(i)=\frac{L}{2 \pi Q^{2i/D}}$ but this makes no difference since they map bijectively to specific values of $d_\alpha$ $d_\beta$ where $0 \leq \alpha,\beta \leq D/2$. For LLAMA/LLAMA2 best suggested values happened to divide the space into 3 almost equal parts:</p>
+
+<p><img src="/images/rope_yarn_r.png" alt="LLAMA/LLAMA2 ratio r(d) and d for a=1 and b=2." /></p>
+
+<p>The paper also introduces the notion of wavelength $\lambda_i=\frac{2\pi}{\theta_i}$. And frequency $ω_i​=\frac{1}{\theta_i}$. We saw on the illustration above of $\theta$ that as index $i$ increases rotation speed decreases. One may think of $\theta_{4096}$ as the longest sinusoid: it takes the longest distance to complete one full circle i.e. this is the longest wavelength and the lowest frequency component. 
+<code class="language-plaintext highlighter-rouge">high i -&gt; low rotation angle -&gt; long wavelength -&gt; low frequency</code>.</p>
+
+<h2 id="llama-3-rope">LLaMA 3 RoPE</h2>
+
+<p>LLaMA 3 uses plain RoPE with a much larger base chosen at training time.<br />
+There is no NTK scaling and no position-dependent remapping.</p>
+
+\[\theta_i^{\mathrm{LLaMA3}}(p)
+=
+p \cdot
+Q_{\mathrm{L3}}^{- \frac{2i}{d}}\]
+
+<p>with</p>
+
+\[Q_{\mathrm{L3}} = 500000\]]]></content><author><name></name></author><summary type="html"><![CDATA[Internalizing RoPE embeddings. If you like me slept under the rock since the introduction of RoPE in 2021 this document provide the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!]]></summary></entry><entry><title type="html">Nips Outstanding Papers</title><link href="http://localhost:4000/NIPS-Outstanding-papers/" rel="alternate" type="text/html" title="Nips Outstanding Papers" /><published>2017-12-13T00:00:00-05:00</published><updated>2017-12-13T00:00:00-05:00</updated><id>http://localhost:4000/NIPS-Outstanding-papers</id><content type="html" xml:base="http://localhost:4000/NIPS-Outstanding-papers/"><![CDATA[<p>Over a 1000 publications and posters has been presented at NIPS2017. Here I would like to mention just a few most fascinating works. I believe that these publications have a fresh view on deep learning. They are promising a great deal of progress in the field.</p>
+
+<p>The papers:</p>
+<ul>
+  <li><a href="https://arxiv.org/abs/1706.02515," title="Self-Normalizing Neural Networks">Self-Normalizing Neural Networks</a> by Günter Klambauer, Thomas Unterthiner, Andreas Mayr, Sepp Hochreiter</li>
+  <li><a href="https://arxiv.org/abs/1710.09829," title="Dynamic Routing Between Capsules">Dynamic Routing Between Capsules</a> by Sara Sabour, Nicholas Frosst, Geoffrey E Hinton</li>
+  <li><a href="https://arxiv.org/abs/1710.02266," title="Eigen-Distortions of Hierarchical Representations">Eigen-Distortions of Hierarchical Representations</a> by Alexander Berardino, Johannes Ballé, Valero Laparra, Eero P. Simoncelli</li>
+  <li><a href="https://arxiv.org/abs/1703.06114," title="Deep sets">Deep sets</a> by Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Ruslan Salakhutdinov, Alexander Smola</li>
+</ul>
+
+<h4 id="self-normalizing-neural-networks"><a href="https://arxiv.org/abs/1706.02515," title="Self-Normalizing Neural Networks">Self-Normalizing Neural Networks</a></h4>
+<p>With that one the beauty unrolls on you gradually. Authors propose a new activation function as below.</p>
+
+<p><img src="./images/snn.png" alt="Alt" /></p>
+
+<p>which looks a lot like all other novel activation functions of the last decade. Just some combination of ELU and RELU with parameters. <em>As if we needed more parameters.</em></p>
+
+<p>The fascinating part comes here. With the hyperparameters α ≈ 1.6733 and λ ≈ 1.0507 and some fairly reasonable assumptions this activation function drags the weights to a point, at which neurons are likely to output zero mean unit variance distribution of activations. Boom! No Batch Normalization needed. And hyperparameter settings come as a bundle.</p>
+
+<p>You might ask what is the point of replacing BatchNorm with something funky. Apparently this technique is a lot more appealing for fully-connected NN. Namely, it is a great help in applying deeper FCN to lower complexity problems. It pretty much makes FCN competitive on problems currently dominated by Random Forests, Boosted Trees and another Kagg
+le-favorite models. I can not be more excited about it.</p>
+
+<p>Disclaimer. Although paper is advertised a lot as a replacement of BatchNorm, it is strictly speaking not replacing anything. BatchNorm dominates CNN world and that part stays unchanged: SELU is not effective with convolutional layers because they break the assumptions about normality of perceptron inputs. SELU brings novelty into FCN, where BatchNorm, at least to my best knowledge, has not been that prominent.</p>
+
+<h4 id="dynamic-routing-between-capsules"><a href="https://arxiv.org/abs/1710.09829," title="Dynamic Routing Between Capsules">Dynamic Routing Between Capsules</a></h4>
+
+<p>Another great rediscovery this year is Capsule Networks. First revealed to the public in pre-ResNet 2011 in paper <a href="http://www.cs.toronto.edu/~fritz/absps/transauto6.pdf">Transforming Auto-encoders</a> by G. E. Hinton, A. Krizhevsky &amp; S. D. Wang this technique waited for another 6 years to reappear as a strong contender. It is already reaching near-SOTA accuracies on MNIST and smallNORB and we might expect a lot more in the near feature.</p>
+
+<p>The motivation comes from the shortcoming of the convolutional NNs. Namely, some of their strengths are their weaknesses. Convolutional filter, being an atomic building block of the networks, is too simple. It outputs a single floating point number and therefore imposes linear scalability of the representation power with the size of the model. Tying together multiple outputs like that (as, in a way, WideResNets are doing) promises exponential grows of the representational power.</p>
+
+<p>Another CNN limitation comes from the position invariance. While we claim that higher levels of a net give us higher level of abstraction, it has implications. For example, if we would like to build an abstraction of a <em>face</em> from the abstractions of a <em>nose</em> and an <em>eye</em>, this would imply that we would need a separate convolutional filter for every relative position of these elements. Or we can just mesh them together regardless of the position with a MaxPooling layer. Non-ideal in both cases.</p>
+
+<p>Capsules are a promising technique for manipulating a vectorized representation instead of single number representation. Conceptually, capsule output represents, first, probability of the concept (a nose) being present in the input, and second, initialization parameters of the concept. Initialization parameters, in 2011 terms, are a point on a representation manifold and might represent some mixture of object position, inherent properties and transformations.</p>
+
+<p>The Dynamic Routing Between Capsules paper brings in a technique, to assemble the capsules in a multy-layer architecture. Dynamic Routing is an approach for replacing max-pooling in capsule paradigm. Namely, the authors introduce a flavor of a negotiation and voting mechanism that allows lower level capsule decide which higher level capsule to assign its output to. During this routing process lower level capsules increase a portion of the assignment weight for the higher level capsules that agrees more with their “view” (output parameters). It also can be viewed as reversed attention: instead of higher level entities selecting better-fit lower level inputs, lower level inputs deciding which higher level concept to commit to.</p>
+
+<p>Beautiful paper. Beautiful idea. And it is always flattering to see new complex and insightful techniques emerge and change the world.</p>
+
+<h4 id="eigen-distortions-of-hierarchical-representations"><a href="https://arxiv.org/abs/1710.02266," title="Eigen-Distortions of Hierarchical Representations">Eigen-Distortions of Hierarchical Representations</a></h4>
+
+<p>No, it does not get boring here.</p>
+
+<p>Have you trained an autoencoder? Remember this decoding image you have as an output looking all blurry and unappealing yet close enough to produce low reconstruction error? This paper addresses exactly that pain point.</p>
+
+<p>Authors not only design new and appealing perceptive loss function, they also develop a comparison technique, showing how numerically equal losses can be strikingly different in terms of subjective quality.</p>
+
+<h4 id="deep-sets"><a href="https://arxiv.org/abs/1703.06114," title="Deep sets">Deep sets</a></h4>
+
+<p>Deep sets extend the applicability of deep learning to wider variety of tasks. Normally, we deal with fixed dimensional problems like classification or regression i.e. predict single number or class for an input. Deep sets proposes a framework for working with set-like data.</p>
+
+<p>Deep sets is a permutation invariant trick for NNs. CNNs bring positional invariance, which is a convenient way of dealing with visual data. RNNs introduce invariance to the size of the input to allow working with data series. Just like that, Deep Sets are intended to introduce invariance to permutation in input and, somewhat, output space of the NNs.</p>
+
+<p>The paper covers mathematical background needed to design permutation invariant functions. Researches proof that to achieve desired properties function of set <em>x</em> should be representable in a form of a sum of projections of elements of <em>x</em>. They further argue projection function can be represented by a universal approximator in form a NN and simply apply summation on top of the set projections.</p>
+
+<p>Results are astonishing. Researchers show that designed framework beats LSTMs in calculating population statistics. Shows competitive results on point cloud classification. They outperform existing methods in set extension (example: given a cluster, for instance words <em>{tiger, lion, cheetah}</em>, retrieve another element belonging to a cluster i.e. <em>jaguar</em>). They successfully apply the technique to image tagging (retrieving set of tag relevant to the image) and anomaly detection.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[Over a 1000 publications and posters has been presented at NIPS2017. Here I would like to mention just a few most fascinating works. I believe that these publications have a fresh view on deep learning. They are promising a great deal of progress in the field.]]></summary></entry><entry><title type="html">Nips Model Hyperparameters</title><link href="http://localhost:4000/NIPS-Model-hyperparameters/" rel="alternate" type="text/html" title="Nips Model Hyperparameters" /><published>2017-12-10T00:00:00-05:00</published><updated>2017-12-10T00:00:00-05:00</updated><id>http://localhost:4000/NIPS-Model-hyperparameters</id><content type="html" xml:base="http://localhost:4000/NIPS-Model-hyperparameters/"><![CDATA[<p>NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.</p>
+
+<p>I would try to partition the narration into next uneven sections:</p>
+<ul>
+  <li>Trends and research direction. Problems yet to be solved.</li>
+  <li>Scientific progress. Problems being solved and solved again.</li>
+  <li>Corporate interest. See what influential industry players are trying to achieve and how far they got.</li>
+  <li>Philosophical outtakes. The guiding lights in the wast world of neural processing.</li>
+</ul>
+
+<p>That said, lets jump right in.</p>
+
+<h1 id="scientific-progress-selecting-training-parameters">Scientific progress: selecting training parameters</h1>
+
+<h2 id="background-hyper-parameter">Background. Hyper-parameter</h2>
+
+<p>After spending 2 month trying to improve text classification architecture by <a href="https://arxiv.org/abs/1408.5882">Yoon Kim</a> it was strikingly clear to me: hyper-parameter search for a novel architecture is long and convoluted process and require lots of insight and experimentation. And, I am afraid, Deep learning book is a little when your training consistently returns NaN as cross-entropy loss for the most settings configurations.</p>
+
+<p>Model hyper-parameters have complex interrelation. For instance, it is commonly known, that increasing batch size (BS) allows increasing learning rate (LR). This increase can be proportional at first but for significantly larger batch sizes starts to skew towards logarithmic. Which means diminishing returns of increased batch size and non-linear behavior between 2 most common parameters. In addition, this non-linear dependence also means that training has to run longer untill convergence for larger batch sizes. It brings TOTAL_EPOCHS parameter into play (unless you have a great rule for the task at hand for stopping the training automatically).</p>
+
+<p>Unfortunately there are more dimensions to it. First, some per-batch operations have to be adjusted. Weight decay being computed for every batch has to be scaled. According to which law? Well, one might typically just keep it as high as possible as long as training is stable. And, from my experience, there is no intuitive rule for figuring out the sweet spot for weight decay, it is just some seemingly random point. Past that point your training would rapidly fall apart.</p>
+
+<p>Another player is Batch Normalization (BN). And yes, you can not influence it at all: it is either on or off. Yet, it is useful to understand what effects might it have. So, let me scaffold properties of BN first.</p>
+
+<h2 id="background-batch-normalization">Background. Batch Normalization.</h2>
+
+<p><a href="https://arxiv.org/abs/1502.03167">Batch normalization</a> is one of the least understood normalization techniques. While the original publication is brilliant and outlines all necessary information it often takes some practice to get comfortable with it. I will try to summarize BN effects for our task of better understanding hyper-parameter inter-relations:</p>
+
+<ol>
+  <li>stabilizing the training. BN decreases variance of neuron outputs between batches. It reduces training noise by simplifying subsequent layer weight co-adaptation.</li>
+  <li>injecting noise. For a given layer <em>N</em> and example <em>i</em> from the batch, activations <em>f(x_i)</em> of the layer would be conditionally dependent on the other examples in the batch. This represents noise i.e. for fixed set of network parameters single input produces different activations depending on the batch.</li>
+  <li>model generalization. Ruffly speaking, BN not only insures consistent distribution of neuron activations in between batches but also in between training set and inference data. These 2 distributions are supposed to be the same, which might or might not be true for real world scenerio. Additionally, we don’t have access to the distribution itself and have to work with often nasty samples.</li>
+</ol>
+
+<p>What happens to these properties when the batch size increases?</p>
+
+<p>First, training becomes more stable (property 1). Since BN uses per-batch first and second order moments as approximations of actual (full dataset) moments, increasing batch size yields better approximations. Better moment approximation leads to lower noise during training and, therefore,  more stable training. You might try to think about BN effect for BS=1 to have a better idea of why larger BS lead to more stable training.</p>
+
+<p>Second, the noisy effect on neuron activation would decrease (property 2). The argument is the same as in previous paragraph. Better moment approximations would yield input activations with less noise in them. Subsequently, regularization effect would decrease. Here one might want to think about increasing the other regularizers (weight decay, for example).</p>
+
+<p>Clearly, navigating in hyper-parameter space takes a lot of practice. As I showed above altogether we have 5 entangled hyper-parameters present in almost every NN model: learning rate, batch size, batch normalization, weight decay and number of training epochs. And this is not an exhaustive list. The better performance you try to squeeze out of your model the more often you encounter another unexpected relation between things you did not see as connected.</p>
+
+<p>Yet, it is very tempting to navigate in this highly counterintuitive space. While a good scientific publication would avoid messing with hyper-parameters altogether to minimize amount of unnecessary information and improve reproducibility, industry has other urge: increasing batch size. Larger batch sizes allow us to utilize the computing power better, by using more memory or using memory more effectively. Larger batch sizes naturally emerge from effective distributed learning. Network (GPU?) communication overhead is typically almost constant per-batch, regardless of the size.</p>
+
+<p>That leads us to the this year NIPS publications. They view the problem from different perspective and describe a few techniques and experimental results. In short, I would say, that getting familiar with these publications helps to build a strong understanding of how to work with these hyper-parameters subset.</p>
+
+<h2 id="nips2017-contributions">NIPS2017 contributions</h2>
+
+<p>NIPS2016 shok the deep learning society a bit with the bold claim. Presumably, <a href="https://arxiv.org/abs/1609.04836">large-batch methods tend to converge to sharp minima</a>. Which, of cause, was not taken lightly and resulted in a number of amazing publications this year. It was a reappearing topic showing how this statement is not true in many ways. One of the most exciting developments supported by impressive (and costly) visualizations can be found <a href="https://openreview.net/forum?id=HkmaTz-0W">here</a>. Author shows how “sharpness” of the minima depends on the weight norm. It also provides some impressive pictures of the loss landscape along random coordinates of the loss space. On the picture below you can see 2 loss surfaces corresponding to training with and without batch normalization.</p>
+
+<p>In <a href="https://arxiv.org/abs/1708.03888">next paper</a> authors argue, that learning rate can be scaled with the BS as long as weight updates are smaller than the weights themselves. It intuitively tells us to stop increasing LR at some point. But, authors propose per-layer LR selection, which allows faster training. As the result, they were able to train ResNet-50 on ImageNet dataset with batch size 8000 and over. The limiting factor is that it does not necessarily work for newer architectures.</p>
+
+<p>Another view on the issue is the training schedule. GoogleAI researches make it clear already in the name of the article <a href="https://arxiv.org/abs/1711.00489">Don’t Decay the Learning Rate, Increase the Batch Size</a>.</p>
+
+<p>A <a href="https://arxiv.org/abs/1702.03275">new paper</a> by Sergey Ioffe, the author of original <a href="https://arxiv.org/abs/1502.03167">batch normalization</a> technique, shows how to further improve generalization properties of the models using BN. The paper looks deeper into differences of applying BN at train and inference times and shares some useful practical insights. The new BN would be particulaly usefull for small batch sizes and for not i.i.d. batches. The implementation is probably already available in your deep learning framework of choice.</p>]]></content><author><name></name></author><summary type="html"><![CDATA[NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.]]></summary></entry></feed>

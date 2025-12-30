@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Rope – Yauheni Selivonchyk – Deep Learning engineer</title>
+
+        <meta charset="utf-8" />
+    <meta content='text/html; charset=utf-8' http-equiv='Content-Type'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0'>
+
+    
+    <meta name="description" content="Internalizing RoPE embeddings. If you like me slept under the rock since the introduction of RoPE in 2021 this document provide the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!
+
+" />
+    <meta property="og:description" content="Internalizing RoPE embeddings. If you like me slept under the rock since the introduction of RoPE in 2021 this document provide the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!
+
+" />
+    
+    <meta name="author" content="Yauheni Selivonchyk" />
+
+    
+    <meta property="og:title" content="Rope" />
+    <meta property="twitter:title" content="Rope" />
+    
+
+    <!--[if lt IE 9]>
+      <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <link rel="alternate" type="application/rss+xml" title="Yauheni Selivonchyk - Deep Learning engineer" href="/feed.xml" />
+
+    <script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Created with Jekyll Now - http://github.com/barryclark/jekyll-now -->
+  </head>
+
+  <body>
+    <div class="wrapper-masthead">
+      <div class="container">
+        <header class="masthead clearfix">
+          <a href="/" class="site-avatar"><img src="https://avatars2.githubusercontent.com/u/4716569" /></a>
+
+          <div class="site-info">
+            <h1 class="site-name"><a href="/">Yauheni Selivonchyk</a></h1>
+            <p class="site-description">Deep Learning engineer</p>
+          </div>
+
+          <nav>
+            <a href="/">Blog</a>
+            <a href="/about">About</a>
+          </nav>
+        </header>
+      </div>
+    </div>
+
+    <div id="main" role="main" class="container">
+      <article class="post">
+  <h1>Rope</h1>
+
+  <div class="entry">
+    <p>Internalizing RoPE embeddings. If you like me slept under the rock since the introduction of RoPE in 2021 this document provide the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!</p>
+
+<h2 id="minimal-background-and-notations">Minimal background and notations</h2>
+
+<p>Self-attention sublayer of the transformer block derives Query Key Value from each token in the sequence. Query of the target token would be compared to Key of preceeding words to determine in which proportion Values of the previous tokens to be blended together using softmax function:</p>
+
+\[\text{softmax}_{n}\left(\frac{q^T_i k_n}{\sqrt{|D|}}\right), \text{where }i\in[0, n]\]
+
+<p>Positional embedding is the main way to help network distinguish between words at different position. Softmax by itself does not distinguish tokens that close from those that are far. We used to provide position as an integer (lacking suitable representation in NN) or convert position index to a one-hot embedding, which wasted computational resources and was non-compositional.</p>
+
+<h2 id="rope-formula-transformation-computational-advantage">RoPE: formula, transformation, computational advantage.</h2>
+
+<p>RoPE takes a 8192-dimensional embedding, partitions it into 4096 2D subspaces (2D pairs). Each subspace is assigned a rotation speed according to an exponential formula. When attention is calculated embedding of the Key is rotated by the rotation speed multiplied by the distance from the Query token.</p>
+
+<p>Formula for rotation momentum depending on the subspace index $i\in[0, D/2]$:</p>
+
+\[\theta_i(p) = p \cdot Q^{- \frac{2i}{d}}\]
+
+<p>Let’s unpack it. If we start from embedding size  $d=8192$ embedding subspace $i \in [{0, \dots, \tfrac{d}{2}-1}]$ (so, $[0, 4095]$). 
+Token positions $p$ for a 6-token sequence when caclulating attention for the 5th token would be $[3, 2, 1, 0, -, -]$. Base $Q$ is an arbitrary number and the original authors set it to $10000$.</p>
+
+<blockquote>
+  <p>Example: elements $[8,9]$ (out of 8192) for token at position 15 would be rotated by $15 \cdot 10000^{-\frac{8}{8192}} = 15 \cdot 1.009 = 15.135$ radians. Which is about $867^{\circ}$ ($57.3^{\circ}$ per radian) and since we can ignore full rotation it is equivalent to $867\mod 360 = 147^{\circ}$.</p>
+</blockquote>
+
+<p>The rotary embedding applied to the corresponding 2D subspace is:</p>
+
+\[\mathrm{RoPE}_i(p)
+=
+\begin{pmatrix}
+\cos \theta_i(p) &amp; -\sin \theta_i(p) \\
+\sin \theta_i(p) &amp; \cos \theta_i(p)
+\end{pmatrix}\]
+
+<p>And the complete transformation matrix looks like this:</p>
+
+<p><img src="/images/rope_transform.png" alt="RoPE Transformation Matrix" /></p>
+
+<p>Su, Jianlin; Lu, Yu; Pan, Shengfeng; Wen, Bo; Liu, Yunfeng (2021)
+“RoFormer: Enhanced Transformer with Rotary Position Embedding”
+arXiv:2104.09864</p>
+
+<p>RoPE authors make the following arbitrary choices setting up RoPE embedding:</p>
+<ul>
+  <li>maximum rotation angle of 1 rad</li>
+  <li>minimum rotation angle of $1/10000*rad$</li>
+  <li>linearly exponential transition between minimum and maximum angle</li>
+  <li>distance between tokens $(t_i,t_j)$ is measured as difference between indexes $i \text{ and } j$ $int(i-j)$</li>
+</ul>
+
+<p>Recap:</p>
+<ul>
+  <li>RoPE transforms embeddings without adding new dimensions or trainable parameters</li>
+  <li>Rope partitions embedding space into 2D subspaces. In each subspace it rotates vectors by a unique angle. Angle is multiplied by integer distance.</li>
+  <li>RoPE preserves embedding norm (true for every subspace)</li>
+  <li>Original formulation allows for an efficient implementation where Q for each token is projected exactly once.</li>
+</ul>
+
+<h3 id="notation">Notation</h3>
+
+<ul>
+  <li>$D$ — size of the embedding space</li>
+  <li>$i$ — rotary dimension index (each $i$ corresponds to one 2D plane)</li>
+  <li>$p$ — token position index (0-based or 1-based; consistent choice assumed)</li>
+  <li>$L_{\mathrm{train}}$ — maximum context length seen during training</li>
+  <li>$L_{\mathrm{target}}$ — desired inference-time context length</li>
+  <li>$Q$ — RoPE base (commonly $10{,}000$)</li>
+  <li>$\alpha$ — NTK scaling factor<br />
+(often $\alpha = \tfrac{L_{\mathrm{target}}}{L_{\mathrm{train}}}$)</li>
+  <li>$\theta_i(p)$ — rotation angle for dimension $i$ at position $p$</li>
+  <li>$\mathrm{RoPE}_i(p)$ — $2 \times 2$ rotation matrix applied to query/key components</li>
+</ul>
+
+<h2 id="rope-visualization">RoPE visualization</h2>
+
+<p>Let’s dwell a little on this transformation.</p>
+
+<p>In practice here is how angle would change depending on the embedding component position $i$. I find degrees to be more intuitive than radians. I print values of $\theta$ as a bar chart and sort them by index $i$ since so far $i$ is in fact discrete.</p>
+
+<p><img src="/images/rope_theta_dims.png" alt="$\theta$ visualization for 8192-dim embedding." /></p>
+
+<blockquote>
+  <p><code class="language-plaintext highlighter-rouge">Observation: we rotate lower 100s of dims by 50-60 degrees while higher (&gt;2000) dimensions rotations is hardly noticeable at low distances. Changing embedding size 2048 to 16386 the shape of the curve would remain the same, it would simply stretch over more indexes i.</code></p>
+</blockquote>
+
+<p>Here is another variation of the same graph. This time lets take a look at the distance required to get a full rotation depending on the subdimension index $i$:</p>
+
+<p><img src="/images/rope_fullrotation_count.png" alt="Distance required to make a full rotation." /></p>
+
+<p>Finally, how does the rotation actually looks like? On the following graph we visualize pairs of $x_i, y_i$ as a vector. We start from a original vector $[1,1]$ and show how it changes for small distances of 0 to 7 for $i=[0, 60, 500, 2000, 3250]$:</p>
+
+<p><img src="/images/rope_theta_5locations.png" alt="Theta log values" /></p>
+
+<blockquote>
+  <p><code class="language-plaintext highlighter-rouge">We can see that in high-i rotation is barely noticeable for small distance (p).</code></p>
+</blockquote>
+
+<h2 id="staticntk">StaticNTK</h2>
+
+<p>First major known improvement (according to me) over the original RoPE was this post of reddit: <a href="https://www.reddit.com/r/LocalLLaMA/comments/14lz7j5/ntkaware_scaled_rope_allows_llama_models_to_have/">NTK-Aware Scaled RoPE allows LLaMA models to have extended (8k+) context size…</a> that people now generally refer to as $StaticNTK$. The work was inspired by NTK but knowing what NTK is redundant to understanding the proposed modified transformation:</p>
+
+\[\theta_i^{\mathrm{NTK}}(p)
+=
+p \cdot Q^{- \frac{2i}{d}} \cdot \boldsymbol{\alpha^{- \frac{2i}{d-2}}}\]
+
+<p>Static NTK introduces scaling parameter $\alpha$ with suggested values of $[2, 4, 8]$ (these are about as good). $\alpha$ has little affect on small i-indexes but high $i$-indexes would have angle $\theta$ reduced by $\alpha$.</p>
+
+<p><img src="/images/rope_theta_dims_sntk.png" alt="$\theta$ visualization for 8192-dim embedding." /></p>
+
+<p><img src="/images/rope_fullrotation_count_sntk.png" alt="Distance required to make a full rotation." /></p>
+
+<p>$\alpha=1$ is equivalent to the old rope. Unfortunately, I had to abandon bar charts in favor of lines that may give a false sense of continuity of the function.</p>
+
+<p>Interestingly enough, standard RoPE can be replaced with StaticNTK in inference. When given a few-shot finetuning performance degradation is negligiable.</p>
+
+<p>Another intersting fact is that StaticNTK is better than simply increasing Q by the same factor. To spell it out: changing $Q:10000-&gt;80000$ would yield the same smallest rotation $\theta_{4096}$ as StaticNTK with $\alpha=8$ but the curve would be different and this difference is important.</p>
+
+<h2 id="dynamic-ntk">Dynamic NTK</h2>
+
+<p>Despite the name it is not related to Static NTK (or, again, NTK in general). So, let’s just take a look a new heuristic and move on.</p>
+
+<p>Dynamic NTK defines a rescaled position $\tilde{p}$:</p>
+
+\[\tilde{p} =
+\begin{cases}
+p, &amp; p \le L_{\mathrm{train}} \\
+p \cdot \dfrac{L_{\mathrm{train}}}{L_{\mathrm{target}}}, &amp; p &gt; L_{\mathrm{train}}
+\end{cases}\]
+
+<p>Then applies standard RoPE using the rescaled position:</p>
+
+\[\theta_i^{\mathrm{dyn}}(p) = \tilde{p} \cdot Q^{- \frac{2i}{d}}\]
+
+<p>Interpretation: the graphs would look the same as stock RoPE, but we would rescale the distance to appear similar to the one seen in training. Example: if we trained on sequencies of maximum size 4000 and we throw a sequence of size 12000 during inference we would scale the distances greater than 4000 by $3=4000/12000$.</p>
+
+<p>To me it appears that transformations-wise words in positions $4000….12000$ would have distances overlaping with $1333…4000$ but authors state that this is better than using distances not seen in training.</p>
+
+<h2 id="yarn-yet-another-rope-extension">YaRN (Yet another RoPE extensioN)</h2>
+
+<p>YaRN (<a href="https://arxiv.org/pdf/2309.00071">arxiv.org/2309</a>) heuristicizes RoPE even further. It updates attention softmax formula and applies scaling (if you squint, in may look a lot like DynamicNTK) but only to higher dimensions of embedding space (higher $i$). The paper is very information dense and we would unpack new projection in two steps not without some criminal oversimplifications.</p>
+
+<p>First, <strong>attention formula</strong> update. Authors suggest replacing</p>
+
+\[\text{softmax}\left(\frac{q^T_m k_n}{\sqrt{|D|}}\right) \to \text{softmax}_{\text{yarn}}\left(\frac{q^T_m k_n}{t \sqrt{|D|}}\right)\]
+
+<p>Where the formula for temperature $t$ is a) defined as function per model and b) value $t$ is calculated per-target. For LLAMA/LLAMA2 it is said to be best selected depending on the new context length $L’$ as below. Quick synthetic experiment (not shown) suggests that as the sequence length growth this choice of curve $t$ tends to reduce the maximum attention score more agressively.</p>
+
+\[t = (0.1 \ln(\frac{L_{\text{target}}}{L_{\text{train}}}) + 1)^2\]
+
+<p><img src="/images/rope_yarn_t.png" alt="LLAMA/LLAMA2 t values depending on sequence length." /></p>
+
+<p>Now, to the <strong>angle rotation</strong> formula. YaRN takes indexes $i$ of the embedding dimensions (again $i\in [0, 4095]$ for embeddings size 8192) and splits them into 3 blocks: the low-$i$ (high frequency) ones are not scaled at all, middle portion is a linear transition from 100% non-scaled to 100% scaled, and the 100% scaled portion comes at the end.</p>
+
+<p>The formula goes as following:</p>
+
+\[\gamma_i^* =
+\begin{cases}
+0, &amp; \text{if } i/D &lt; d_\alpha \\[1mm]
+\dfrac{i/D - d_\alpha}{d_\beta - d_\alpha}, &amp; \text{if } d_\alpha &lt; i/D &lt; d_\beta\\[1mm]
+1, &amp; \text{if } i/D &gt; d_\beta 
+\end{cases}\]
+
+\[\theta_i^{YaRN} = (1 - \gamma_i^*) \theta_i + \gamma_i^* \frac{\theta_i}{s}\]
+
+<p>$d_\alpha$ and $d_\beta \in [0, 1]$ ($d_\alpha &lt; d_\beta$) are 2 more hyperparameters for one to select. In the original paper authors actually pick parameters $\alpha$ and $\beta$ in a different subspace based on an exponential transformation $r(i)=\frac{L}{2 \pi Q^{2i/D}}$ but this makes no difference since they map bijectively to specific values of $d_\alpha$ $d_\beta$ where $0 \leq \alpha,\beta \leq D/2$. For LLAMA/LLAMA2 best suggested values happened to divide the space into 3 almost equal parts:</p>
+
+<p><img src="/images/rope_yarn_r.png" alt="LLAMA/LLAMA2 ratio r(d) and d for a=1 and b=2." /></p>
+
+<p>The paper also introduces the notion of wavelength $\lambda_i=\frac{2\pi}{\theta_i}$. And frequency $ω_i​=\frac{1}{\theta_i}$. We saw on the illustration above of $\theta$ that as index $i$ increases rotation speed decreases. One may think of $\theta_{4096}$ as the longest sinusoid: it takes the longest distance to complete one full circle i.e. this is the longest wavelength and the lowest frequency component. 
+<code class="language-plaintext highlighter-rouge">high i -&gt; low rotation angle -&gt; long wavelength -&gt; low frequency</code>.</p>
+
+<h2 id="llama-3-rope">LLaMA 3 RoPE</h2>
+
+<p>LLaMA 3 uses plain RoPE with a much larger base chosen at training time.<br />
+There is no NTK scaling and no position-dependent remapping.</p>
+
+\[\theta_i^{\mathrm{LLaMA3}}(p)
+=
+p \cdot
+Q_{\mathrm{L3}}^{- \frac{2i}{d}}\]
+
+<p>with</p>
+
+\[Q_{\mathrm{L3}} = 500000\]
+
+  </div>
+
+  <div class="date">
+    Written on December 24, 2025
+  </div>
+
+  
+</article>
+
+    </div>
+
+    <div class="wrapper-footer">
+      <div class="container">
+        <footer class="footer">
+          
+
+
+
+<a href="https://github.com/yselivonchyk"><i class="svg-icon github"></i></a>
+
+
+
+
+<a href="https://www.twitter.com/yselivonchyk"><i class="svg-icon twitter"></i></a>
+<a href="http://stackoverflow.com/users/867889/yauheni-selivonchyk"><i class="svg-icon stackoverflow"></i></a>
+
+
+        </footer>
+      </div>
+    </div>
+
+    
+
+  </body>
+</html>
