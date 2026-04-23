@@ -1,4 +1,4 @@
-NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
+NeurIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
 
 I would try to partition the narration into next uneven sections:
 * Trends and research direction. Problems yet to be solved.
@@ -39,12 +39,12 @@ Clearly, navigating in hyper-parameter space takes a lot of practice. As I showe
 
 Yet, it is very tempting to navigate in this highly counterintuitive space. While a good scientific publication would avoid messing with hyper-parameters altogether to minimize amount of unnecessary information and improve reproducibility, industry has other urge: increasing batch size. Larger batch sizes allow us to utilize the computing power better, by using more memory or using memory more effectively. Larger batch sizes naturally emerge from effective distributed learning. Network (GPU?) communication overhead is typically almost constant per-batch, regardless of the size.
 
-That leads us to the this year NIPS publications. They view the problem from different perspective and describe a few techniques and experimental results. In short, I would say, that getting familiar with these publications helps to build a strong understanding of how to work with these hyper-parameters subset.
+That leads us to the this year NeurIPS publications. They view the problem from different perspective and describe a few techniques and experimental results. In short, I would say, that getting familiar with these publications helps to build a strong understanding of how to work with these hyper-parameters subset.
 
-## NIPS2017 contributions
+## NeurIPS2017 contributions
 
 
-NIPS2016 shok the deep learning society a bit with the bold claim. Presumably, [large-batch methods tend to converge to sharp minima][2]. Which, of cause, was not taken lightly and resulted in a number of amazing publications this year. It was a reappearing topic showing how this statement is not true in many ways. One of the most exciting developments supported by impressive (and costly) visualizations can be found [here][7]. Author shows how "sharpness" of the minima depends on the weight norm. It also provides some impressive pictures of the loss landscape along random coordinates of the loss space. On the picture below you can see 2 loss surfaces corresponding to training with and without batch normalization.
+NeurIPS2016 shok the deep learning society a bit with the bold claim. Presumably, [large-batch methods tend to converge to sharp minima][2]. Which, of cause, was not taken lightly and resulted in a number of amazing publications this year. It was a reappearing topic showing how this statement is not true in many ways. One of the most exciting developments supported by impressive (and costly) visualizations can be found [here][7]. Author shows how "sharpness" of the minima depends on the weight norm. It also provides some impressive pictures of the loss landscape along random coordinates of the loss space. On the picture below you can see 2 loss surfaces corresponding to training with and without batch normalization.
 
 In [next paper][6] authors argue, that learning rate can be scaled with the BS as long as weight updates are smaller than the weights themselves. It intuitively tells us to stop increasing LR at some point. But, authors propose per-layer LR selection, which allows faster training. As the result, they were able to train ResNet-50 on ImageNet dataset with batch size 8000 and over. The limiting factor is that it does not necessarily work for newer architectures.
 
