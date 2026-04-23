@@ -4,11 +4,9 @@ title: About
 permalink: /about/
 ---
 
-I am a practical Data Scientist with a deep interest in fundamental research. In particular I am interested in fields such as Computer Vision, Unsupervised and Reinforcement learning.
+I am a Machine Learning Systems Engineer focused on distributed training, LLM finetuning, and researcher productivity.
 
-### More Information
-
-With this blog I am sharing my perception of Deep Learning developments and challenges in research related fields. At the moment it serves me as tool for better organizing my thoughts and documenting my latest endeavours.
+This blog contains select entries of my scratchpad.
 
 ### Contact me
 
