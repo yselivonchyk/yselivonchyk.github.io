@@ -1,4 +1,4 @@
-Over a 1000 publications and posters has been presented at NIPS2017. Here I would like to mention just a few most fascinating works. I believe that these publications have a fresh view on deep learning. They are promising a great deal of progress in the field.
+Over a 1000 publications and posters has been presented at NeurIPS2017. Here I would like to mention just a few most fascinating works. I believe that these publications have a fresh view on deep learning. They are promising a great deal of progress in the field.
 
 The papers:
 * [Self-Normalizing Neural Networks][1] by Günter Klambauer, Thomas Unterthiner, Andreas Mayr, Sepp Hochreiter
