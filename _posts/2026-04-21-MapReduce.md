@@ -37,31 +37,31 @@ Here we start to put it all together into a functional system. I may be making a
 ![MapReduce interactions](/images/mapReduce.png)
 
 1. User:
-   1.1 -> Write input_splits to DFS
-   1.2 -> Call mapReduce(job) on Coordinator
-   1.3 <- Await done from Coordinator
-   1.4 -> Read part_files from DFS
+   - `->` Write input_splits to DFS
+   - `->` Call mapReduce(job) on Coordinator
+   - `<-` Await done from Coordinator
+   - `->` Read part_files from DFS
 2. Coordinator:
-   2.1 -> Assign map task(input_split) to Mapper
-   2.2 <- Await shuffle_blocks ready from Mapper
-   2.3 -> Notify Reducer of shuffle_block ready
-   2.4 <- Await all map completions
-   2.5 -> Send ready_to_reduce to Reducer
-   2.6 <- Await reduce complete from Reducer
-   2.7 -> Notify User done
+   - `->` Assign map task(input_split) to Mapper
+   - `<-` Await shuffle_blocks ready from Mapper
+   - `->` Notify Reducer of shuffle_block ready
+   - `<-` Await all map completions
+   - `->` Send ready_to_reduce to Reducer
+   - `<-` Await reduce complete from Reducer
+   - `->` Notify User done
 3. Mapper:
-   3.1 <- Await map task assignment from Coordinator
-   3.2 -> Read input_split from DFS
-   3.3 [] Produce [0..N] pairs per record; pre-sort; combine
-   3.4 -> Write shuffle_block to DFS
-   3.5 -> Notify Coordinator shuffle_blocks ready
+   - `<-` Await map task assignment from Coordinator
+   - `->` Read input_split from DFS
+   - `[]` Produce [0..N] pairs per record; pre-sort; combine
+   - `->` Write shuffle_block to DFS
+   - `->` Notify Coordinator shuffle_blocks ready
 4. Reducer:
-   4.1 <- Await shuffle_block ready from Coordinator
-   4.2 -> Copy shuffle_block from DFS
-   4.3 <- Await ready_to_reduce from Coordinator
-   4.4 [] Iterate over groups; call reduce()
-   4.5 -> Write part_file to DFS
-   4.6 -> Notify Coordinator reduce complete
+   - `<-` Await shuffle_block ready from Coordinator
+   - `->` Copy shuffle_block from DFS
+   - `<-` Await ready_to_reduce from Coordinator
+   - `[]` Iterate over groups; call reduce()
+   - `->` Write part_file to DFS
+   - `->` Notify Coordinator reduce complete
 5. DFS:
    - Store/serve input_splits
    - Store/serve shuffle_blocks
@@ -101,4 +101,4 @@ Messaging between Coordinator and Workers is organized using pairs of Queues. Ea
 
 ## Code
 
-Complete implementation code is available at https://gist.github.com/yselivonchyk/1c2cc91f9402bb578d221b8266c2b8a3
+Complete implementation code is available at [GitHub Gist](https://gist.github.com/yselivonchyk/1c2cc91f9402bb578d221b8266c2b8a3)
