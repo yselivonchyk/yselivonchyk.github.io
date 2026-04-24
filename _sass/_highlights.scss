@@ -10,8 +10,31 @@
   overflow: scroll;
 }
 
+pre.highlight {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
 code {
   font-family:'Bitstream Vera Sans Mono','Courier', monospace;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.9em;
+  color: #c0341d;
+}
+
+pre code {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
 }
 
 .highlight .c { color: #586E75 } /* Comment */

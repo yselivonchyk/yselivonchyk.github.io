@@ -9,30 +9,34 @@ This article is an introductory practical material for educational purposes. Fol
 High level idea is fairly straight forward. Given a set of files containing records we first call map(record) to produce pairs of (key, value). Then all pairs of the same key are directed to a `reduce(key, values[])` call output of which is written into a partial output file.
 
 Taking a closer look, semantics of both methods becomes slightly more peculiar:
-`map(record: Object) -> List[Tuple[key, value0]]`
-`reduce(key, values: Iterable) -> List[Tuple[key, value1]]`
+
+```python
+map(record: Object) -> List[Tuple[key, value0]]
+reduce(key, values: Iterable) -> List[Tuple[key, value1]]
+```
+
 i.e. single map may produce multiple pairs out of a single record; reduce may produce a list of outputs but generally expected to have 0 or 1.
 
 ## Lingvo
 
 Lets pin down the names of different portions of data, actors, and processes:
-- input_split - one of 1..N files processed by MapReduce. Single input_split becomes a single map assignment
-- shuffle_block - a part of map output transferred between mapper_i and reducer_j.
-- part_file - output of a single reducer and subsequently output of the algorithm
+- **input_split** - one of 1..N files processed by MapReduce. Single input_split becomes a single map assignment
+- **shuffle_block** - a part of map output transferred between mapper_i and reducer_j.
+- **part_file** - output of a single reducer and subsequently output of the algorithm
 
 Shuffle is routing of data between map and reduce. Partitioning by key, transferring those partitions, and preparing reducer input by merge/sort/group. Essentially, everything that happens between return from a `map()` and start of `reduce()` call.
 
-Coordinator (also prehistorically known as master) is the object that coordinates execution of MapReduce across multiple Mappers and Reducers.
+**Coordinator** (also prehistorically known as master) is the object that coordinates execution of MapReduce across multiple Mappers and Reducers.
 
-Mapper is an actor that is being assigned to run map on one or multiple input_splits. Mapper also is responsible for splitting it's own output into shuffle_blocks (one per input_split per reducer) and pre-sorting the pairs by key within each split.
+**Mapper** is an actor that is being assigned to run map on one or multiple input_splits. Mapper also is responsible for splitting it's own output into shuffle_blocks (one per input_split per reducer) and pre-sorting the pairs by key within each split.
 
-Reducer is one of possibly multiple actors that runs reduce() function. Reducer accumulates shuffle_blocks, generates groups of `(key, values[])` for the reduce call, and writes the output data.
+**Reducer** is one of possibly multiple actors that runs reduce() function. Reducer accumulates shuffle_blocks, generates groups of `(key, values[])` for the reduce call, and writes the output data.
 
-DFS (distributed file system) is a piece of infrastructure that handles all data reads/writes across distributed actors. Note that Coordinator is not expected to interact with DFS whatsoever.
+**DFS** (distributed file system) is a piece of infrastructure that handles all data reads/writes across distributed actors. Note that Coordinator is not expected to interact with DFS whatsoever.
 
 ## Interactions:
 
-Here we start to put it all together into a functional system. I may be making a number of arbitrary choices regarding details of some interactions that would differ from a real world system. For example, original publication states that Coordinator notifies Reducers of data readiness, while in Hadoop Reducers discover it themselves.
+Here we start to put it all together into a functional system. I may be making a number of arbitrary choices regarding details of some interactions that would differ from a real world system. For example, original publication states that Coordinator notifies Reducers of data readiness, while in Hadoop Reducers discover ready shuffle blocks itself.
 
 ![MapReduce interactions](/images/mapReduce.png)
 
@@ -41,6 +45,7 @@ Here we start to put it all together into a functional system. I may be making a
    - `->` Call mapReduce(job) on Coordinator
    - `<-` Await done from Coordinator
    - `->` Read part_files from DFS
+
 2. Coordinator:
    - `->` Assign map task(input_split) to Mapper
    - `<-` Await shuffle_blocks ready from Mapper
@@ -49,12 +54,14 @@ Here we start to put it all together into a functional system. I may be making a
    - `->` Send ready_to_reduce to Reducer
    - `<-` Await reduce complete from Reducer
    - `->` Notify User done
+
 3. Mapper:
    - `<-` Await map task assignment from Coordinator
    - `->` Read input_split from DFS
    - `[]` Produce [0..N] pairs per record; pre-sort; combine
    - `->` Write shuffle_block to DFS
    - `->` Notify Coordinator shuffle_blocks ready
+
 4. Reducer:
    - `<-` Await shuffle_block ready from Coordinator
    - `->` Copy shuffle_block from DFS
@@ -62,6 +69,7 @@ Here we start to put it all together into a functional system. I may be making a
    - `[]` Iterate over groups; call reduce()
    - `->` Write part_file to DFS
    - `->` Notify Coordinator reduce complete
+
 5. DFS:
    - Store/serve input_splits
    - Store/serve shuffle_blocks
@@ -91,13 +99,14 @@ We organize code around actors and interactions described in section ##Interacti
 
 Parallel workers (Map, Reduce) are configured with an internal ThreadExecutionPool to run the payload tasks.
 
-Messaging between Coordinator and Workers is organized using pairs of Queues. Each queue message is declared as a class for readability:
+Messaging between Coordinator and Workers is organized using pairs of Queues. Each queue message is declared as a class for readability. Queue messages only contain metadata and DFS locations, not actual data values.
 - `MapMsg` — Coordinator → Mapper: map task assignment
 - `MapCompleteMsg` — Mapper → Coordinator: shuffle_blocks ready
 - `ShuffleBlockReadyMsg` — Coordinator → Reducer: shuffle_block location
 - `ReduceMsg` — Coordinator → Reducer: ready to reduce
 - `ReduceCompleteMsg` — Reducer → Coordinator: part_file location
 
+Workers use a dedicated thread to execute workload to emulate distributed environment.
 
 ## Code
 
