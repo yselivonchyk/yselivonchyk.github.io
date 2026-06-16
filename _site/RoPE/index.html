@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Rope – Yauheni Selivonchyk – Deep Learning engineer</title>
+    <title>Building understanding of RoPE projection – Yauheni Selivonchyk – Deep Learning engineer</title>
 
         <meta charset="utf-8" />
     <meta content='text/html; charset=utf-8' http-equiv='Content-Type'>
@@ -19,8 +19,8 @@
     <meta name="author" content="Yauheni Selivonchyk" />
 
     
-    <meta property="og:title" content="Rope" />
-    <meta property="twitter:title" content="Rope" />
+    <meta property="og:title" content="Building understanding of RoPE projection" />
+    <meta property="twitter:title" content="Building understanding of RoPE projection" />
     
 
     <!--[if lt IE 9]>
@@ -63,7 +63,7 @@
 
     <div id="main" role="main" class="container">
       <article class="post">
-  <h1>Rope</h1>
+  <h1>Building understanding of RoPE projection</h1>
 
   <div class="entry">
     <p>Internalizing RoPE embeddings. If, like me, you slept under the rock since the introduction of RoPE in 2021 this document provides the most-brief late 2025 update on the latest practical tech. Jump start your paper reading here!</p>
@@ -262,6 +262,17 @@ Q_{\mathrm{L3}}^{- \frac{2i}{d}}\]
 
   
 </article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code) {
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    code.parentNode.replaceWith(div);
+  });
+  mermaid.initialize({startOnLoad:true});
+</script>
 
     </div>
 

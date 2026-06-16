@@ -1,3 +1,8 @@
+---
+layout: post
+title: "Implementing MapReduce in python"
+---
+
 To my surprise I wasn't able to find an easy to understand example of MapReduce implementation in python. Re-creating the pattern from paper turned out to be a fairly nuanced endeavour. Lets peel this onion together.
 
 # Bite-sized MapReduce in python

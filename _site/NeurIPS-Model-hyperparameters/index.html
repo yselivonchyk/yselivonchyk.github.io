@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Nips Model Hyperparameters – Yauheni Selivonchyk – Deep Learning engineer</title>
+    <title>Neurips Model Hyperparameters – Yauheni Selivonchyk – Deep Learning engineer</title>
 
         <meta charset="utf-8" />
     <meta content='text/html; charset=utf-8' http-equiv='Content-Type'>
@@ -9,18 +9,18 @@
     <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0'>
 
     
-    <meta name="description" content="NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
+    <meta name="description" content="NeurIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
 
 " />
-    <meta property="og:description" content="NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
+    <meta property="og:description" content="NeurIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.
 
 " />
     
     <meta name="author" content="Yauheni Selivonchyk" />
 
     
-    <meta property="og:title" content="Nips Model Hyperparameters" />
-    <meta property="twitter:title" content="Nips Model Hyperparameters" />
+    <meta property="og:title" content="Neurips Model Hyperparameters" />
+    <meta property="twitter:title" content="Neurips Model Hyperparameters" />
     
 
     <!--[if lt IE 9]>
@@ -63,10 +63,10 @@
 
     <div id="main" role="main" class="container">
       <article class="post">
-  <h1>Nips Model Hyperparameters</h1>
+  <h1>Neurips Model Hyperparameters</h1>
 
   <div class="entry">
-    <p>NIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.</p>
+    <p>NeurIPS2017 is over. It has been 6 intense days full of philosophy, research, science, inspiration and idea exchange. It is time to organize the knowledge now. Give it some structure and document some outtakes while they are still fresh.</p>
 
 <p>I would try to partition the narration into next uneven sections:</p>
 <ul>
@@ -110,11 +110,11 @@
 
 <p>Yet, it is very tempting to navigate in this highly counterintuitive space. While a good scientific publication would avoid messing with hyper-parameters altogether to minimize amount of unnecessary information and improve reproducibility, industry has other urge: increasing batch size. Larger batch sizes allow us to utilize the computing power better, by using more memory or using memory more effectively. Larger batch sizes naturally emerge from effective distributed learning. Network (GPU?) communication overhead is typically almost constant per-batch, regardless of the size.</p>
 
-<p>That leads us to the this year NIPS publications. They view the problem from different perspective and describe a few techniques and experimental results. In short, I would say, that getting familiar with these publications helps to build a strong understanding of how to work with these hyper-parameters subset.</p>
+<p>That leads us to the this year NeurIPS publications. They view the problem from different perspective and describe a few techniques and experimental results. In short, I would say, that getting familiar with these publications helps to build a strong understanding of how to work with these hyper-parameters subset.</p>
 
-<h2 id="nips2017-contributions">NIPS2017 contributions</h2>
+<h2 id="neurips2017-contributions">NeurIPS2017 contributions</h2>
 
-<p>NIPS2016 shok the deep learning society a bit with the bold claim. Presumably, <a href="https://arxiv.org/abs/1609.04836">large-batch methods tend to converge to sharp minima</a>. Which, of cause, was not taken lightly and resulted in a number of amazing publications this year. It was a reappearing topic showing how this statement is not true in many ways. One of the most exciting developments supported by impressive (and costly) visualizations can be found <a href="https://openreview.net/forum?id=HkmaTz-0W">here</a>. Author shows how “sharpness” of the minima depends on the weight norm. It also provides some impressive pictures of the loss landscape along random coordinates of the loss space. On the picture below you can see 2 loss surfaces corresponding to training with and without batch normalization.</p>
+<p>NeurIPS2016 shok the deep learning society a bit with the bold claim. Presumably, <a href="https://arxiv.org/abs/1609.04836">large-batch methods tend to converge to sharp minima</a>. Which, of cause, was not taken lightly and resulted in a number of amazing publications this year. It was a reappearing topic showing how this statement is not true in many ways. One of the most exciting developments supported by impressive (and costly) visualizations can be found <a href="https://openreview.net/forum?id=HkmaTz-0W">here</a>. Author shows how “sharpness” of the minima depends on the weight norm. It also provides some impressive pictures of the loss landscape along random coordinates of the loss space. On the picture below you can see 2 loss surfaces corresponding to training with and without batch normalization.</p>
 
 <p>In <a href="https://arxiv.org/abs/1708.03888">next paper</a> authors argue, that learning rate can be scaled with the BS as long as weight updates are smaller than the weights themselves. It intuitively tells us to stop increasing LR at some point. But, authors propose per-layer LR selection, which allows faster training. As the result, they were able to train ResNet-50 on ImageNet dataset with batch size 8000 and over. The limiting factor is that it does not necessarily work for newer architectures.</p>
 
@@ -131,6 +131,17 @@
 
   
 </article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code) {
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    code.parentNode.replaceWith(div);
+  });
+  mermaid.initialize({startOnLoad:true});
+</script>
 
     </div>
 
