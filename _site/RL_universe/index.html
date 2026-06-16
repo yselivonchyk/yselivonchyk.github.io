@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>RL dichotomies – Yauheni Selivonchyk – Deep Learning engineer</title>
+
+        <meta charset="utf-8" />
+    <meta content='text/html; charset=utf-8' http-equiv='Content-Type'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0'>
+
+    
+    <meta name="description" content="Engineering cheatsheet for RL terms frequently found in RL papers and how they relate to each other. This is the article I would re-read opening an RL article after a 12 months hiatus.
+
+" />
+    <meta property="og:description" content="Engineering cheatsheet for RL terms frequently found in RL papers and how they relate to each other. This is the article I would re-read opening an RL article after a 12 months hiatus.
+
+" />
+    
+    <meta name="author" content="Yauheni Selivonchyk" />
+
+    
+    <meta property="og:title" content="RL dichotomies" />
+    <meta property="twitter:title" content="RL dichotomies" />
+    
+
+    <!--[if lt IE 9]>
+      <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <link rel="alternate" type="application/rss+xml" title="Yauheni Selivonchyk - Deep Learning engineer" href="/feed.xml" />
+
+    <script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Created with Jekyll Now - http://github.com/barryclark/jekyll-now -->
+  </head>
+
+  <body>
+    <div class="wrapper-masthead">
+      <div class="container">
+        <header class="masthead clearfix">
+          <a href="/" class="site-avatar"><img src="https://avatars2.githubusercontent.com/u/4716569" /></a>
+
+          <div class="site-info">
+            <h1 class="site-name"><a href="/">Yauheni Selivonchyk</a></h1>
+            <p class="site-description">Deep Learning engineer</p>
+          </div>
+
+          <nav>
+            <a href="/">Blog</a>
+            <a href="/about">About</a>
+          </nav>
+        </header>
+      </div>
+    </div>
+
+    <div id="main" role="main" class="container">
+      <article class="post">
+  <h1>RL dichotomies</h1>
+
+  <div class="entry">
+    <p>Engineering cheatsheet for RL terms frequently found in RL papers and how they relate to each other. This is the article I would re-read opening an RL article after a 12 months hiatus.</p>
+
+<h2 id="intro">Intro</h2>
+
+<p>Let’s take a look at a quick summary of a modern PPO update rule:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PPO is a model-free actor-critic policy-gradient method: 
+it trains a policy with a clipped policy-gradient 
+objective, and usually trains a critic 
+that can provide bootstrapped value estimates, 
+commonly through GAE.
+</code></pre></div></div>
+
+<p>Even when each term in the definition may be familiar to the reader or can be explained through reading the source paper it may be hard to connect the pieces together. For instance, the single-sentence definition above mixes a broad term <em>model-free</em> and a minute detail of the technique: <em>clipped policy-gradient</em>.</p>
+
+<p>This article provides a structure to approaching RL techniques.</p>
+
+<p>We propose the following 5 independent or semi-independent dichotomies for classifying core RL training techniques:</p>
+<ol>
+  <li>Model being trained</li>
+  <li>Update algorithm used</li>
+  <li>Type of Reward</li>
+  <li>Source of data used in RL</li>
+  <li>The way reward is attributed to particular actions.</li>
+</ol>
+
+<p>To prevent this article from growing into a PhD thesis we would emphasise recently relevant techniques such as ones used in DeepSeek-R1 and early ChatGPT models. We do not attempt to explain every term you see, but we hope to greatly reduce the necessity to hop between papers by providing a backbone for classifying RL techniques.</p>
+
+<h2 id="abstract-rl-training">Abstract RL training</h2>
+
+<p>Let’s start from an abstract representation of an RL training:</p>
+
+<pre><code class="language-mermaid">flowchart LR
+    M["Model / policy"]
+    ACT["Rollout / sampled actions: aₜ₀ → aₜ₁ → aₜ₂ → aₜ₃ → aₜ₄"]
+    RF["Reward function"]
+    R["Reward r"]
+
+    M -- "1. sample" --&gt; ACT
+    ACT -- "2. evaluate / score" --&gt; RF
+    RF -- "3. return reward" --&gt; R
+
+    R -- "4. compute / assign advantage Aₜ" --&gt; ACT
+    ACT -- "5. update policy" --&gt; M
+
+    class M,RF functionNode
+    class ACT,R signalNode
+
+    classDef functionNode fill:#b2f2bb,stroke:#1e1e1e,stroke-width:2px
+    classDef signalNode fill:#ffec99,stroke:#1e1e1e,stroke-width:2px
+</code></pre>
+
+<p>We train a <strong>model</strong> or a <strong>policy</strong>. During training we rollout a sequence of <strong>actions</strong> that model takes to arrive to some terminal state. In case of LLM that would be a sequence of tokens until we hit EOS. In case of tic-tac-toe game it would be a sequence of 2 to 5 actions to arrive to one of 3 outcomes: win, lose, or draw. The whole sequence is referred to as <strong>rollout</strong>. The length of sequence is often referred to as <strong>time</strong>.</p>
+
+<p><strong>Reward function</strong> scores part or complete sequence and produces a <strong>reward</strong>. Reward can be used to assign the contribution to each action i.e. <strong>advantage</strong>. At last, model is updated based on the advantages each action received.</p>
+
+<h2 id="types-of-models--update-rules">Types of models &amp; update rules</h2>
+
+<p>First, there is a family of models that try to create a model of the world. Probabilistic Graphical Models attempt to encapsulate the world in a set of joint probability distributions. Model of a triple pendulum may already encapsulate how it works and only try to learn the parameters of the specific pendulum.</p>
+
+<p>Unlike model-based techniques, <strong>PPO</strong> and <strong>GRPO</strong> are <strong>model-free</strong>. They do not try to create a model of the world.</p>
+
+<p>The second most important distinction is what the model is trying to learn. At every point in time we work with the current <strong>state</strong> of the environment <code class="language-plaintext highlighter-rouge">s</code> and a set of possible <strong>actions</strong> <code class="language-plaintext highlighter-rouge">a</code>. <strong>Value-based</strong> learners predict expected value of each action directly, for example in Q-learning <code class="language-plaintext highlighter-rouge">Q(s, a) -&gt; R</code>. <strong>Policy-based</strong> learners create a distribution over the set of actions instead $\pi(a|s)$.</p>
+
+<p>Let’s chew on it. LLM predicting next token is a stochastic policy: it outputs a distribution of probabilities over the complete dictionary (typically only a few tokens are assigned probabilities greater than <code class="language-plaintext highlighter-rouge">0.1%</code>). Top-3 sampling from the same LLM prediction is a policy again: we normalize probabilities over the top-3 tokens and can sample from this probability distribution over 3 actions.</p>
+
+<p>The line between value-based methods and policy-based methods are somewhat blurry. For a given value function it is easy to create a policy, for example, assign 100% probability to the action with highest expected value. In my understanding Q-learning is better suited when Bellman target can be estimated more or less directly from actions and their outcomes. Policy-gradient family imposes no restriction on how model is updated based on the reward rollouts receive, which creates greater freedom to use looser defined reward functions, odd-looking model update rules, and mix-and-match different rewards and incentives.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    ALG["RL algorithm families"]
+
+    ALG --&gt; MF["Model-free RL"]
+    ALG ~~~ SP[ ]
+    ALG --&gt; MB["Model-based RL&lt;br/&gt;&lt;i&gt;Dyna-Q, MuZero&lt;/i&gt;"]
+    style SP fill:none,stroke:none,color:none
+
+    MF --&gt; PG["Policy-gradient&lt;br/&gt;&lt;i&gt;learn π(a|s)&lt;/i&gt;"]
+    MF --&gt; VB["Value-based&lt;br/&gt;&lt;i&gt;learn Q(s,a) or V(s)&lt;/i&gt;"]
+
+    VB --&gt; QL["Q-learning&lt;br/&gt;&lt;i&gt;value-based + TD target&lt;/i&gt;"]
+
+    PG --&gt; REIN["REINFORCE&lt;br/&gt;&lt;i&gt;policy-gradient + MC return&lt;/i&gt;"]
+    PG --&gt; AC["Actor-Critic&lt;br/&gt;&lt;i&gt;policy-gradient + learned value function&lt;/i&gt;"]
+
+    AC --&gt; PPO["PPO&lt;br/&gt;&lt;i&gt;actor-critic + clipped objective + often GAE&lt;/i&gt;"]
+    PG --&gt; GRPO["GRPO&lt;br/&gt;&lt;i&gt;policy-gradient + group-relative advantages&lt;/i&gt;"]
+
+    classDef algoNode fill:#a5d8ff,stroke:#1e1e1e,stroke-width:2px
+    class REIN,AC,PPO,GRPO,QL algoNode
+</code></pre>
+
+<p>The family of policy-gradient <strong>update rules</strong> (or algorithms) is pretty big and members often share techniques and regularizations between each other. Let’s name a couple. REINFORCE incentivises actions that lead to higher sequence reward. Actor-critic based learning trains an additional <strong>critic</strong> model that is trained to estimate value or advantage; critic can also improve / co-train as the training progresses akin to schedule based learning. GRPO normalizes the reward value across multiple rollouts before the update.</p>
+
+<p>Reward source, types of regularization techniques being used, and method for assigning advantages to specific action are not prescribed by the type of update rule. PPO [<a href="https://arxiv.org/abs/1707.06347">1707.06347</a>] is a form of actor-critic style training. It adds trust-region clipping [<a href="https://arxiv.org/abs/1502.05477">1502.05477</a>] and often uses GAE [<a href="https://arxiv.org/abs/1506.02438">1506.02438</a>]. OpenAI also used reward assignment in form of reinforcement learning from human preferences (RLHF) [<a href="https://arxiv.org/abs/1706.03741">1706.03741</a>]. As you may have noticed none of these papers are particularly new, nor unique to PPO or policy-gradient methods.</p>
+
+<h2 id="reward-types">Reward types</h2>
+
+<p>RL from human preferences originates from 2017 RLHF (F for feedback) paper [<a href="https://arxiv.org/abs/1706.03741">1706.03741</a>]. The original paper used Human Feedback in an online manner: model produces multiple trajectories and human in the loop selects the preferred one. Contrary to that ChatGPT training afaict used pairs of human preferences in an offline setting.</p>
+
+<p>RLAIF replaces human annotator with AI. Anthropic’s Constitutional AI is one form of RLAIF: train a model (one or many) to evaluate if the answer obeys an arbitrary concept. For a given offline dataset of human preferences it is always possible to train a <strong>judge</strong> model to provide feedback on any trajectory instead of relying on the original RLHF dataset itself.</p>
+
+<p>RLVR uses a verifiable reward [<a href="https://arxiv.org/abs/2506.14245">2506.14245</a>]. The reward is produced by a <strong>verifier</strong> — a deterministic function or <strong>rule</strong> that checks correctness. DeepSeek-R1 used rule-based rewards, including correctness rewards and format rewards. For math-style tasks, the final answer can be compared to the correct solution by a <strong>verifier</strong> to assign an exact-answer reward (0 or 1) to the full trajectory.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    RS["Reward source"]
+
+    RS --&gt; RLHF["RLHF&lt;br/&gt;&lt;i&gt;human preference data&lt;/i&gt;&lt;br/&gt;&lt;i&gt;→ reward model&lt;/i&gt;"]
+    RS --&gt; RLAIF["RLAIF&lt;br/&gt;&lt;i&gt;AI feedback / judge&lt;/i&gt;&lt;br/&gt;&lt;i&gt;→ reward&lt;/i&gt;"]
+    RS --&gt; RLVR["RLVR&lt;br/&gt;&lt;i&gt;verifier / rule / unit test&lt;/i&gt;&lt;br/&gt;&lt;i&gt;→ exact-answer or pass/fail reward&lt;/i&gt;"]
+</code></pre>
+
+<h2 id="data-regime">Data regime</h2>
+
+<p>When algorithm optimizes the policy using data sampled from that same (or very similar) policy we call it <strong>on-policy</strong> (REINFORCE). <strong>Off-policy</strong> optimization (Q-learning) can work without generating outputs from the policy. For example, by training from observed $(s, a, r, s_{t+1})$ data points alone.</p>
+
+<p>For example, a policy may generate a trajectory and receive the reward from an AI judge for its own output. This makes it on-policy or near-on-policy training. While if we train a model directly on fixed human-preference pairs, the examples have not been generated by the policy itself and the data regime is therefore offline, or off-policy if used as an RL update.</p>
+
+<pre><code class="language-mermaid">flowchart TD
+    DR["Data regime"]
+
+    DR --&gt; ON["On-policy / near-on-policy&lt;br/&gt;&lt;i&gt;current or recent policy generated samples&lt;/i&gt;&lt;br/&gt;&lt;i&gt;REINFORCE, PPO, GRPO&lt;/i&gt;"]
+
+    DR --&gt; OFF["Off-policy&lt;br/&gt;&lt;i&gt;older / behavior policy generated samples&lt;/i&gt;&lt;br/&gt;&lt;i&gt;Q-learning, SAC&lt;/i&gt;"]
+</code></pre>
+
+<p>The line between on-policy and off-policy may get blurry in LLM training. The model from a few updates ago may be considered “very similar” and training would be assumed on-policy. Some even perform distillation from larger models using per-token losses to incentivise student model to be more like teacher model and still call it on-policy.</p>
+
+<h2 id="rollout-and-advantage-estimator">Rollout and Advantage estimator</h2>
+
+<p>It takes more than one-turn to win or lose in tic-tac-toe. Reward more often than not can only be assigned to a complete rollout. Advantage takes care of distributing the reward back to individual actions.</p>
+
+<p>In Q-learning in state $s$ we take action $a$ which takes us to state $s’$: $(s, a, r, s’)$. Q-function from $s’$ can predict max future value from the next state: $\max_{a’} Q(s’, a’)$. It then applies discount factor $\gamma$ to translate the future value to the previous action. So, if we take action $a$ with immediate reward of <code class="language-plaintext highlighter-rouge">-1</code> and it takes us to state $s’$ with maximum future value of <code class="language-plaintext highlighter-rouge">8</code> with discount factor of <code class="language-plaintext highlighter-rouge">0.9</code>, we get that the value of action $a$ is <code class="language-plaintext highlighter-rouge">-1 + 0.9 × 8 = 6.2</code>.</p>
+
+<p>Q-learning in this case does not perform a complete rollout and estimates return from the predicted maximum future value of the next state. This process is called <strong>bootstrapping</strong>: estimating value for intermediate portions of the sequence.</p>
+
+<p>GRPO is a <strong>Monte-Carlo</strong> (MC) based update rule. Reward is ever only assigned to a complete rollout. In case of GRPO reward is normalized within the group and for a specific rollout reward is broadcast to each action i.e. within the sequence every action gets the same advantage.</p>
+
+<p>ChatGPT-style PPO advantage estimation is bootstrapped. PPO assigns signed advantages per action by comparing the rollout return / estimated return to the critic’s value estimate for that state. PPO does not have to rely only on the final sequence reward to assign credit to an action.</p>
+
+<!-- hen estimated value of the rollout is higher than critic's value i.e. incentivises only actions that are better than baseline. It then says that out of all actions `a_0, a_1, ..., a_N` we would attribute higher advantage to actions that are more different from the old policy i.e. if old model assigns 20% to action `a_7` and current policy assigns 40% to action `a_7` PPO assumes that this action is the one that helped model beat the critic and gives it a ratio of `0.20/0.40=2` (and then clips it back to `1.1` for a 10% confidence interval, but this is another story). So it may look a lot like an MC method. But we have to point out that rewards are assigned to actions `a_0, a_1, ..., a_N` vs critic during rollout before we observe the end of the sequence, which makes it a **bootstrapping** method. -->
+
+<pre><code class="language-mermaid">flowchart TD
+    EST["Advantage estimation"]
+
+    EST --&gt; Rollout["Rollout-based estimate&lt;br/&gt;&lt;i&gt;score completed trajectory / sequence&lt;/i&gt;&lt;br/&gt;&lt;i&gt;no value-function bootstrapping&lt;/i&gt;"]
+
+    EST --&gt; Boot["Bootstrapped value-function estimate&lt;br/&gt;&lt;i&gt;uses V(s) or Q(s,a)&lt;/i&gt;"]
+
+    Rollout --&gt; MC["Monte-Carlo return&lt;br/&gt;&lt;i&gt;plain complete rollout return&lt;/i&gt;&lt;br/&gt;&lt;i&gt;e.g. REINFORCE&lt;/i&gt;"]
+
+    Rollout --&gt; GRA["Group-relative advantage&lt;br/&gt;&lt;i&gt;normalize rewards across sampled completions&lt;/i&gt;&lt;br/&gt;&lt;i&gt;e.g. GRPO&lt;/i&gt;"]
+
+    Boot --&gt; TD1["Bellman target&lt;br/&gt;&lt;i&gt; r + γ max Q(s',a)&lt;/i&gt;&lt;br/&gt;&lt;i&gt;e.g. Q-learning, critic training&lt;/i&gt;"]
+
+    Boot --&gt; GAE["GAE&lt;br/&gt;&lt;i&gt;λ-smoothed sum of TD residuals&lt;/i&gt;&lt;br/&gt;&lt;i&gt;e.g. PPO&lt;/i&gt;"]
+</code></pre>
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Let’s revisit the definition from above:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>PPO is a model-free actor-critic policy-gradient method: 
+it trains a policy with a clipped policy-gradient 
+objective, and usually trains a critic 
+that can provide bootstrapped value estimates, 
+commonly through GAE.
+</code></pre></div></div>
+
+<p>We were successful at explaining 7 out of 9 concepts in the definition, and at explaining which ones are related to each other. We are only short of explaining <code class="language-plaintext highlighter-rouge">clipped policy-gradient</code> and <code class="language-plaintext highlighter-rouge">GAE</code> - information that can be filled in with 2 google searches.</p>
+
+
+  </div>
+
+  <div class="date">
+    Written on June 10, 2026
+  </div>
+
+  
+</article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code) {
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    code.parentNode.replaceWith(div);
+  });
+  mermaid.initialize({startOnLoad:true});
+</script>
+
+    </div>
+
+    <div class="wrapper-footer">
+      <div class="container">
+        <footer class="footer">
+          
+
+
+
+<a href="https://github.com/yselivonchyk"><i class="svg-icon github"></i></a>
+
+
+
+
+<a href="https://www.twitter.com/yselivonchyk"><i class="svg-icon twitter"></i></a>
+<a href="http://stackoverflow.com/users/867889/yauheni-selivonchyk"><i class="svg-icon stackoverflow"></i></a>
+
+
+        </footer>
+      </div>
+    </div>
+
+    
+
+  </body>
+</html>

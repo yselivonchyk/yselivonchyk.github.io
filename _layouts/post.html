@@ -15,3 +15,14 @@ layout: default
 
   {% include disqus.html %}
 </article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code) {
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    code.parentNode.replaceWith(div);
+  });
+  mermaid.initialize({startOnLoad:true});
+</script>

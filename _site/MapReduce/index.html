@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Implementing MapReduce in python – Yauheni Selivonchyk – Deep Learning engineer</title>
+
+        <meta charset="utf-8" />
+    <meta content='text/html; charset=utf-8' http-equiv='Content-Type'>
+    <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0'>
+
+    
+    <meta name="description" content="To my surprise I wasn’t able to find an easy to understand example of MapReduce implementation in python. Re-creating the pattern from paper turned out to be a fairly nuanced endeavour. Lets peel this onion together.
+
+" />
+    <meta property="og:description" content="To my surprise I wasn’t able to find an easy to understand example of MapReduce implementation in python. Re-creating the pattern from paper turned out to be a fairly nuanced endeavour. Lets peel this onion together.
+
+" />
+    
+    <meta name="author" content="Yauheni Selivonchyk" />
+
+    
+    <meta property="og:title" content="Implementing MapReduce in python" />
+    <meta property="twitter:title" content="Implementing MapReduce in python" />
+    
+
+    <!--[if lt IE 9]>
+      <script src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <link rel="stylesheet" type="text/css" href="/style.css" />
+    <link rel="alternate" type="application/rss+xml" title="Yauheni Selivonchyk - Deep Learning engineer" href="/feed.xml" />
+
+    <script>
+  MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <!-- Created with Jekyll Now - http://github.com/barryclark/jekyll-now -->
+  </head>
+
+  <body>
+    <div class="wrapper-masthead">
+      <div class="container">
+        <header class="masthead clearfix">
+          <a href="/" class="site-avatar"><img src="https://avatars2.githubusercontent.com/u/4716569" /></a>
+
+          <div class="site-info">
+            <h1 class="site-name"><a href="/">Yauheni Selivonchyk</a></h1>
+            <p class="site-description">Deep Learning engineer</p>
+          </div>
+
+          <nav>
+            <a href="/">Blog</a>
+            <a href="/about">About</a>
+          </nav>
+        </header>
+      </div>
+    </div>
+
+    <div id="main" role="main" class="container">
+      <article class="post">
+  <h1>Implementing MapReduce in python</h1>
+
+  <div class="entry">
+    <p>To my surprise I wasn’t able to find an easy to understand example of MapReduce implementation in python. Re-creating the pattern from paper turned out to be a fairly nuanced endeavour. Lets peel this onion together.</p>
+
+<h1 id="bite-sized-mapreduce-in-python">Bite-sized MapReduce in python</h1>
+
+<p>This article is an introductory practical material for educational purposes. Folks that plan to actually work with Hadoop are advised to trust none of it.</p>
+
+<h2 id="the-algorithm">The algorithm</h2>
+
+<p>High level idea is fairly straight forward. Given a set of files containing records we first call map(record) to produce pairs of (key, value). Then all pairs of the same key are directed to a <code class="language-plaintext highlighter-rouge">reduce(key, values[])</code> call output of which is written into a partial output file.</p>
+
+<p>Taking a closer look, semantics of both methods becomes slightly more peculiar:</p>
+
+<div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">map</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">Object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">key</span><span class="p">,</span> <span class="n">value0</span><span class="p">]]</span>
+<span class="nb">reduce</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">key</span><span class="p">,</span> <span class="n">value1</span><span class="p">]]</span>
+</code></pre></div></div>
+
+<p>i.e. single map may produce multiple pairs out of a single record; reduce may produce a list of outputs but generally expected to have 0 or 1.</p>
+
+<h2 id="lingvo">Lingvo</h2>
+
+<p>Lets pin down the names of different portions of data, actors, and processes:</p>
+<ul>
+  <li><strong>input_split</strong> - one of 1..N files processed by MapReduce. Single input_split becomes a single map assignment</li>
+  <li><strong>shuffle_block</strong> - a part of map output transferred between mapper_i and reducer_j.</li>
+  <li><strong>part_file</strong> - output of a single reducer and subsequently output of the algorithm</li>
+</ul>
+
+<p>Shuffle is routing of data between map and reduce. Partitioning by key, transferring those partitions, and preparing reducer input by merge/sort/group. Essentially, everything that happens between return from a <code class="language-plaintext highlighter-rouge">map()</code> and start of <code class="language-plaintext highlighter-rouge">reduce()</code> call.</p>
+
+<p><strong>Coordinator</strong> (also prehistorically known as master) is the object that coordinates execution of MapReduce across multiple Mappers and Reducers.</p>
+
+<p><strong>Mapper</strong> is an actor that is being assigned to run map on one or multiple input_splits. Mapper also is responsible for splitting it’s own output into shuffle_blocks (one per input_split per reducer) and pre-sorting the pairs by key within each split.</p>
+
+<p><strong>Reducer</strong> is one of possibly multiple actors that runs reduce() function. Reducer accumulates shuffle_blocks, generates groups of <code class="language-plaintext highlighter-rouge">(key, values[])</code> for the reduce call, and writes the output data.</p>
+
+<p><strong>DFS</strong> (distributed file system) is a piece of infrastructure that handles all data reads/writes across distributed actors. Note that Coordinator is not expected to interact with DFS whatsoever.</p>
+
+<h2 id="interactions">Interactions:</h2>
+
+<p>Here we start to put it all together into a functional system. I may be making a number of arbitrary choices regarding details of some interactions that would differ from a real world system. For example, original publication states that Coordinator notifies Reducers of data readiness, while in Hadoop Reducers discover ready shuffle blocks itself.</p>
+
+<p><img src="/images/mapReduce.png" alt="MapReduce interactions" /></p>
+
+<ol>
+  <li>User:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Write input_splits to DFS</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Call mapReduce(job) on Coordinator</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await done from Coordinator</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Read part_files from DFS</li>
+    </ul>
+  </li>
+  <li>Coordinator:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Assign map task(input_split) to Mapper</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await shuffle_blocks ready from Mapper</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Notify Reducer of shuffle_block ready</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await all map completions</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Send ready_to_reduce to Reducer</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await reduce complete from Reducer</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Notify User done</li>
+    </ul>
+  </li>
+  <li>Mapper:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await map task assignment from Coordinator</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Read input_split from DFS</li>
+      <li><code class="language-plaintext highlighter-rouge">[]</code> Produce [0..N] pairs per record; pre-sort; combine</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Write shuffle_block to DFS</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Notify Coordinator shuffle_blocks ready</li>
+    </ul>
+  </li>
+  <li>Reducer:
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await shuffle_block ready from Coordinator</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Copy shuffle_block from DFS</li>
+      <li><code class="language-plaintext highlighter-rouge">&lt;-</code> Await ready_to_reduce from Coordinator</li>
+      <li><code class="language-plaintext highlighter-rouge">[]</code> Iterate over groups; call reduce()</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Write part_file to DFS</li>
+      <li><code class="language-plaintext highlighter-rouge">-&gt;</code> Notify Coordinator reduce complete</li>
+    </ul>
+  </li>
+  <li>DFS:
+    <ul>
+      <li>Store/serve input_splits</li>
+      <li>Store/serve shuffle_blocks</li>
+      <li>Store part_files</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 id="deep-dives">Deep dives</h2>
+
+<p>Algorithm inputs and outputs. Input is a list of file locations that can be used directly as a mapper assignment. Similar, output of the algorithm is also a list of files, one per reducer. Output list is ordered by the reducer that produced and it is expected that if partitioning logic implied an order this order will be preserved in output files. For example, if we had a range partition across 2 reducers such that the 1st handles letters [A-K] and the other [L-Z], the first file is expected to be produced with keys [A-K] and second [L-Z]: <code class="language-plaintext highlighter-rouge">[part_file_0_AK, part_file_1_LZ]</code>.</p>
+
+<p>Sorting vs partitioning. Key can be a compound object <code class="language-plaintext highlighter-rouge">&lt;fname, lname, dob&gt;</code>. Default partitioning schema resorts to <code class="language-plaintext highlighter-rouge">hash(key) % R</code> but can have a custom configuration of <code class="language-plaintext highlighter-rouge">hash(key["fname"])</code> for example. Partition function operates on the key only and never on the full record.</p>
+
+<p>Reducer mechanics. Reducer fetches the shuffle_blocks as they become ready, but the reduce itself is only called once all the blocks are ready. Reducer can iterate over N pre-sorted blocks in a “Merge k-sorted lists” manner, therefore avoiding ever materializing the complete partition in memory.</p>
+
+<p>Mapper can emit [0..N] intermediate pairs from a single record.</p>
+
+<h2 id="advanced-topics-not-covered">Advanced topics (not covered)</h2>
+
+<ol>
+  <li>Fault tolerance. If one of the workers fails it’s task has to be reassigned to a different worker. Task may need to be redone if the worker was also part of DFS.</li>
+  <li>Filtering intermediate results.</li>
+  <li>Temporary splitting of <em>hot</em> keys. If key distribution is heavily skewed it may cause an overload on a reducer. It requires additional logic to split frequent keys.</li>
+  <li>Combine. In order to reduce amount of data being transfered between mapper and reducer it is sometimes possible to do a local partial reduce on mapper node.</li>
+</ol>
+
+<h2 id="implementation-details">Implementation details.</h2>
+
+<p>We organize code around actors and interactions described in section ##Interactions.</p>
+
+<p>Parallel workers (Map, Reduce) are configured with an internal ThreadExecutionPool to run the payload tasks.</p>
+
+<p>Messaging between Coordinator and Workers is organized using pairs of Queues. Each queue message is declared as a class for readability. Queue messages only contain metadata and DFS locations, not actual data values.</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">MapMsg</code> — Coordinator → Mapper: map task assignment</li>
+  <li><code class="language-plaintext highlighter-rouge">MapCompleteMsg</code> — Mapper → Coordinator: shuffle_blocks ready</li>
+  <li><code class="language-plaintext highlighter-rouge">ShuffleBlockReadyMsg</code> — Coordinator → Reducer: shuffle_block location</li>
+  <li><code class="language-plaintext highlighter-rouge">ReduceMsg</code> — Coordinator → Reducer: ready to reduce</li>
+  <li><code class="language-plaintext highlighter-rouge">ReduceCompleteMsg</code> — Reducer → Coordinator: part_file location</li>
+</ul>
+
+<p>Workers use a dedicated thread to execute workload to emulate distributed environment.</p>
+
+<h2 id="code">Code</h2>
+
+<p>Complete implementation code is available at <a href="https://gist.github.com/yselivonchyk/1c2cc91f9402bb578d221b8266c2b8a3">GitHub Gist</a></p>
+
+  </div>
+
+  <div class="date">
+    Written on April 21, 2026
+  </div>
+
+  
+</article>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>
+  document.querySelectorAll('pre code.language-mermaid').forEach(function(code) {
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = code.textContent;
+    code.parentNode.replaceWith(div);
+  });
+  mermaid.initialize({startOnLoad:true});
+</script>
+
+    </div>
+
+    <div class="wrapper-footer">
+      <div class="container">
+        <footer class="footer">
+          
+
+
+
+<a href="https://github.com/yselivonchyk"><i class="svg-icon github"></i></a>
+
+
+
+
+<a href="https://www.twitter.com/yselivonchyk"><i class="svg-icon twitter"></i></a>
+<a href="http://stackoverflow.com/users/867889/yauheni-selivonchyk"><i class="svg-icon stackoverflow"></i></a>
+
+
+        </footer>
+      </div>
+    </div>
+
+    
+
+  </body>
+</html>
