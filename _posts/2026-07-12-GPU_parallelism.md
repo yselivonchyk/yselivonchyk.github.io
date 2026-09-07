@@ -34,9 +34,15 @@ Warps are the units selected for instruction issue. Resident warps keep their ex
 
 ---
 
+
+```
+Each SM has 4 instruction scheduling units. Instructions generally take 2 GPU cycles to complete, arithmetic instructions take 4 GPU cycles to complete. Which means that it may be sufficient to run 4 warps to complete saturate 1 SM with 4-way instruction-level parallelism, or 16 warps if instructions have dependencies between them.
+```
+
 ## 2. Resource hierarchy — H100 example
 
 ### Per SM
+
 
 An H100 SM can support, subject to other resource constraints:
 
